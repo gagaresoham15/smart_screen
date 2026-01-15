@@ -8,10 +8,12 @@ from datetime import datetime
 # Device Configuration
 # =====================================================
 DEVICE_ID = "SCREEN_101"
-SERVER_WS_URL = "ws://127.0.0.1:2000/ws"
-SERVER_HTTP_URL = "http://127.0.0.1:2000"
 
-# Local storage (acts like Pi SD Card)
+# 🔥 ngrok PUBLIC URLs
+SERVER_WS_URL = "wss://c784b905d3b6.ngrok-free.app/ws"
+SERVER_HTTP_URL = "https://c784b905d3b6.ngrok-free.app"
+
+# Local storage (acts like Raspberry Pi SD Card)
 STORAGE_DIR = "device_storage"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
@@ -22,44 +24,40 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-logger = logging.getLogger(__name__)
+
+logger = logging.getLogger("SMART_AD_DEVICE")
 
 # =====================================================
 # Helper Function : Download File from Server
 # =====================================================
 def download_file(filename):
-    logger.info(f"[{DEVICE_ID}] Download handler triggered")
+    logger.info("=" * 60)
+    logger.info(f"[{DEVICE_ID}] DOWNLOAD WORKFLOW STARTED")
 
     file_url = f"{SERVER_HTTP_URL}/media/{filename}"
     local_path = os.path.join(STORAGE_DIR, filename)
 
-    logger.info(f"[{DEVICE_ID}] Server file URL: {file_url}")
-    logger.info(f"[{DEVICE_ID}] Local storage path resolved: {local_path}")
+    logger.info(f"[{DEVICE_ID}] Remote file URL : {file_url}")
+    logger.info(f"[{DEVICE_ID}] Local path        : {local_path}")
 
-    # Check if file already exists (cache logic)
+    # Cache check
     if os.path.exists(local_path):
-        logger.warning(
-            f"[{DEVICE_ID}] Cache HIT | File already present locally: {filename}"
-        )
-        logger.info(
-            f"[{DEVICE_ID}] Skipping download to save bandwidth & time"
-        )
+        logger.warning(f"[{DEVICE_ID}] CACHE HIT | File already exists")
+        logger.info(f"[{DEVICE_ID}] Download skipped")
+        logger.info("=" * 60)
         return
 
-    logger.info(
-        f"[{DEVICE_ID}] Cache MISS | File not found locally, starting download"
-    )
+    logger.info(f"[{DEVICE_ID}] CACHE MISS | Download required")
 
     try:
         start_time = datetime.now()
+        logger.info(f"[{DEVICE_ID}] Sending HTTP GET request")
 
-        logger.info(f"[{DEVICE_ID}] Sending HTTP GET request to server")
-
-        response = requests.get(file_url, stream=True, timeout=10)
+        response = requests.get(file_url, stream=True, timeout=15)
         response.raise_for_status()
 
         logger.info(
-            f"[{DEVICE_ID}] HTTP response received | Status Code: {response.status_code}"
+            f"[{DEVICE_ID}] HTTP Response OK | Status: {response.status_code}"
         )
 
         bytes_written = 0
@@ -71,100 +69,74 @@ def download_file(filename):
                     bytes_written += len(chunk)
 
         size_kb = bytes_written / 1024
-        end_time = datetime.now()
+        duration = (datetime.now() - start_time).total_seconds()
 
         logger.info(
-            f"[{DEVICE_ID}] Download SUCCESS | "
+            f"[{DEVICE_ID}] DOWNLOAD SUCCESS | "
             f"File: {filename} | Size: {size_kb:.2f} KB"
         )
 
-        logger.info(
-            f"[{DEVICE_ID}] Download duration: "
-            f"{(end_time - start_time).total_seconds()} seconds"
-        )
-
-        logger.info(
-            f"[{DEVICE_ID}] File safely stored at: {os.path.abspath(local_path)}"
-        )
-
-        logger.info(
-            f"[{DEVICE_ID}] File ready for playback / scheduling"
-        )
+        logger.info(f"[{DEVICE_ID}] Download time: {duration:.2f} seconds")
+        logger.info(f"[{DEVICE_ID}] Stored at: {os.path.abspath(local_path)}")
+        logger.info(f"[{DEVICE_ID}] File ready for playback")
+        logger.info("=" * 60)
 
     except requests.exceptions.Timeout:
-        logger.error(
-            f"[{DEVICE_ID}] Download FAILED | Timeout while downloading {filename}"
-        )
+        logger.error(f"[{DEVICE_ID}] DOWNLOAD FAILED | Timeout")
 
     except requests.exceptions.HTTPError as e:
-        logger.error(
-            f"[{DEVICE_ID}] HTTP ERROR while downloading {filename} | {str(e)}"
-        )
+        logger.error(f"[{DEVICE_ID}] HTTP ERROR | {str(e)}")
 
     except Exception as e:
-        logger.error(
-            f"[{DEVICE_ID}] Unexpected ERROR during download | {str(e)}"
-        )
+        logger.error(f"[{DEVICE_ID}] UNKNOWN ERROR | {str(e)}")
 
 # =====================================================
 # WebSocket Callbacks
 # =====================================================
 def on_open(ws):
     logger.info("=" * 60)
-    logger.info(f"[{DEVICE_ID}] WebSocket connection ESTABLISHED")
-    logger.info(f"[{DEVICE_ID}] Device marked as ONLINE on server")
-    logger.info(f"[{DEVICE_ID}] Waiting for content push events...")
+    logger.info(f"[{DEVICE_ID}] WebSocket CONNECTED")
+    logger.info(f"[{DEVICE_ID}] Device STATUS: ONLINE")
+    logger.info(f"[{DEVICE_ID}] Waiting for content notifications...")
     logger.info("=" * 60)
 
 def on_message(ws, message):
-    receive_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logger.info("=" * 60)
+    logger.info(f"[{DEVICE_ID}] WebSocket MESSAGE RECEIVED")
+    logger.info(f"[{DEVICE_ID}] Payload: {message}")
 
-    logger.info(f"[{DEVICE_ID}] Incoming WebSocket message")
-    logger.info(f"[{DEVICE_ID}] Timestamp: {receive_time}")
-    logger.info(f"[{DEVICE_ID}] Raw Payload: {message}")
-
-    # Expected message format: NEW_CONTENT:<filename>
     if message.startswith("NEW_CONTENT:"):
         filename = message.replace("NEW_CONTENT:", "").strip()
-
-        logger.info(
-            f"[{DEVICE_ID}] Valid content notification detected"
-        )
-
-        logger.info(
-            f"[{DEVICE_ID}] New media assigned by server | Filename: {filename}"
-        )
-
+        logger.info(f"[{DEVICE_ID}] New content assigned: {filename}")
         download_file(filename)
-
     else:
-        logger.warning(
-            f"[{DEVICE_ID}] Unknown / unsupported message format received"
-        )
+        logger.warning(f"[{DEVICE_ID}] Unknown message format")
+    logger.info("=" * 60)
 
 def on_error(ws, error):
-    logger.error(f"[{DEVICE_ID}] WebSocket ERROR occurred")
-    logger.error(f"[{DEVICE_ID}] Error details: {error}")
+    logger.error("=" * 60)
+    logger.error(f"[{DEVICE_ID}] WebSocket ERROR")
+    logger.error(f"[{DEVICE_ID}] Error: {error}")
+    logger.error("=" * 60)
 
 def on_close(ws, close_status_code, close_msg):
     logger.warning("=" * 60)
-    logger.warning(f"[{DEVICE_ID}] WebSocket connection CLOSED")
+    logger.warning(f"[{DEVICE_ID}] WebSocket DISCONNECTED")
     logger.warning(f"[{DEVICE_ID}] Close Code: {close_status_code}")
-    logger.warning(f"[{DEVICE_ID}] Reason: {close_msg}")
-    logger.warning(f"[{DEVICE_ID}] Device is OFFLINE")
+    logger.warning(f"[{DEVICE_ID}] Reason    : {close_msg}")
+    logger.warning(f"[{DEVICE_ID}] Device STATUS: OFFLINE")
     logger.warning("=" * 60)
 
 # =====================================================
-# Client Startup (Device Boot Simulation)
+# Device Boot Simulation
 # =====================================================
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info(f"[{DEVICE_ID}] Fake Raspberry Pi BOOT sequence started")
-    logger.info(f"[{DEVICE_ID}] Initializing network modules")
-    logger.info(f"[{DEVICE_ID}] Initializing local storage")
-    logger.info(f"[{DEVICE_ID}] Storage directory: {os.path.abspath(STORAGE_DIR)}")
-    logger.info(f"[{DEVICE_ID}] Connecting to WebSocket server")
-    logger.info(f"[{DEVICE_ID}] Server URL: {SERVER_WS_URL}")
+    logger.info(f"[{DEVICE_ID}] FAKE RASPBERRY PI BOOTING")
+    logger.info(f"[{DEVICE_ID}] Storage initialized")
+    logger.info(f"[{DEVICE_ID}] Storage path: {os.path.abspath(STORAGE_DIR)}")
+    logger.info(f"[{DEVICE_ID}] Connecting to server...")
+    logger.info(f"[{DEVICE_ID}] WS URL: {SERVER_WS_URL}")
     logger.info("=" * 60)
 
     ws = websocket.WebSocketApp(
